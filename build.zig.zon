@@ -1,0 +1,23 @@
+.{
+    .name = .advent_of_code_2025_zig,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.15.2",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "main.zig",
+        "day01/main.zig",
+        "day02/main.zig",
+        "day03/main.zig",
+        "day04/main.zig",
+        "day05/main.zig",
+        "day06/main.zig",
+        "day07/main.zig",
+        "day08/main.zig",
+        "day09/main.zig",
+        "day10/main.zig",
+        "day11/main.zig",
+        "day12/main.zig",
+    },
+    .fingerprint = 0x4c68f5e75fae54fe,
+}
