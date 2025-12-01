@@ -6,6 +6,7 @@ const testing = std.testing;
 const expectEqual = std.testing.expectEqual;
 const Reader = std.Io.Reader;
 const Writer = std.Io.Writer;
+const example = @embedFile("example.txt");
 
 pub fn main() !void {
     var stdout_buffer: [1024]u8 = undefined;
@@ -18,12 +19,45 @@ pub fn main() !void {
     };
     defer input_file.close();
 
-    try stdout.print("All your {s} are belong to us.\n", .{"codebase"});
+    var buf: [4]u8 = undefined;
+    var reader = std.fs.File.reader(input_file, &buf);
+    const answer_p1 = try crackPassword(&reader.interface);
+    try stdout.print("Part 1: {d}\n", .{answer_p1});
+
     try stdout.flush();
 }
 
+fn crackPassword(reader: *Reader) !u32 {
+    var password: u32 = 0;
+    var dial: i16 = 50;
+    var rot: i16 = undefined;
+    var dist: i16 = 0;
+    var lasttok: i8 = undefined;
+    while (reader.takeByteSigned()) |tok| {
+        switch (tok) {
+            'L', 'R' => rot = tok,
+            '\n' => {
+                if (lasttok == '\n') break;
+                if (rot == 'L') dist *= -1;
+                dial += dist;
+                dial = @mod(dial, 100);
+                // print("rot: {c} dist: {d} dial: {d}\n", .{ @as(u8, @intCast(rot)), dist, dial });
+                if (dial == 0) password += 1;
+                dist = 0;
+            },
+            else => dist = (dist * 10) + (tok - '0'),
+        }
+        lasttok = tok;
+    } else |err| switch (err) {
+        error.EndOfStream => {},
+        else => return err,
+    }
+    return password;
+}
+
 test "part 1" {
-    return error.SkipZigTest;
+    var reader: Reader = .fixed(example);
+    try expectEqual(3, crackPassword(&reader));
 }
 
 test "part 2" {
