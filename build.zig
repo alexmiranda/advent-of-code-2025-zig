@@ -15,14 +15,16 @@ pub fn build(b: *std.Build) !void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    for (1..26) |i| {
+    for (1..13) |i| {
         var buf: [5]u8 = undefined;
         _ = try std.fmt.bufPrint(&buf, "day{0d:0>2}", .{i});
         const exe = b.addExecutable(.{
-            .name = "aoc2024-" ++ buf,
-            .root_source_file = b.path(b.pathJoin(&[_][]const u8{ &buf, "main.zig" })),
-            .target = target,
-            .optimize = optimize,
+            .name = "aoc2025-" ++ buf,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path(b.pathJoin(&[_][]const u8{ &buf, "main.zig" })),
+                .target = target,
+                .optimize = optimize,
+            }),
         });
 
         // This declares intent for the executable to be installed into the
@@ -55,9 +57,11 @@ pub fn build(b: *std.Build) !void {
     }
 
     const exe_unit_tests = b.addTest(.{
-        .root_source_file = b.path("main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
