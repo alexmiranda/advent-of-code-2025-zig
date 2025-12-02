@@ -19,23 +19,25 @@ pub fn main() !void {
 
     var buf: [4096]u8 = undefined;
     var reader = std.fs.File.reader(input_file, &buf);
-    const answer_p1 = try countInvalids(&reader.interface);
+    const answer_p1, const answer_p2 = try countInvalids(&reader.interface);
     try stdout.print("Part 1: {d}\n", .{answer_p1});
-    // try stdout.print("Part 2: {d}\n", .{answer_p2});
+    try stdout.print("Part 2: {d}\n", .{answer_p2});
     try stdout.flush();
 }
 
-fn countInvalids(reader: *Reader) !usize {
-    var sum: usize = 0;
+fn countInvalids(reader: *Reader) !struct { usize, usize } {
+    var part_1: usize = 0;
+    var part_2: usize = 0;
     while (try reader.takeDelimiter(',')) |tok| {
         const range_str = std.mem.trim(u8, tok, "\n");
         // print("{s}\n", .{range_str});
         var it = std.mem.splitScalar(u8, range_str, '-');
         const start = try std.fmt.parseUnsigned(usize, it.next().?, 10);
         const end = try std.fmt.parseUnsigned(usize, it.next().?, 10);
-        sum += countInvalidsNaively(start, end);
+        part_1 += countInvalidsNaively(start, end);
+        part_2 += countInvalidsRevised(start, end);
     }
-    return sum;
+    return .{ part_1, part_2 };
 }
 
 fn countInvalidsNaively(start: usize, end: usize) usize {
@@ -57,12 +59,36 @@ fn countInvalidsNaively(start: usize, end: usize) usize {
     return sum;
 }
 
+fn countInvalidsRevised(start: usize, end: usize) usize {
+    var sum: usize = 0;
+    var buf: [@bitSizeOf(usize)]u8 = undefined;
+    for (start..end + 1) |i| {
+        const str = std.fmt.bufPrint(&buf, "{d}", .{i}) catch unreachable;
+        const mid = str.len / 2;
+        for (1..mid + 1) |sz| {
+            if (str.len % sz != 0) continue;
+            var it = std.mem.window(u8, str, sz, sz);
+            const chunk = it.next().?;
+            const invalid = while (it.next()) |next| {
+                if (!std.mem.eql(u8, chunk, next)) break false;
+            } else true;
+            if (invalid) {
+                sum += i;
+                break;
+            }
+        }
+    }
+    return sum;
+}
+
 test "part 1" {
     var reader: Reader = .fixed(example);
-    const answer = try countInvalids(&reader);
+    const answer, _ = try countInvalids(&reader);
     try expectEqual(1227775554, answer);
 }
 
 test "part 2" {
-    return error.SkipZigTest;
+    var reader: Reader = .fixed(example);
+    _, const answer = try countInvalids(&reader);
+    try expectEqual(4174379265, answer);
 }
