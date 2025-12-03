@@ -22,7 +22,46 @@ pub fn main() !void {
     var reader = std.fs.File.reader(input_file, &buf);
     const answer_p1 = try totalOutput(&reader.interface);
     try stdout.print("Part 1: {d}\n", .{answer_p1});
+
+    try reader.seekTo(0);
+    const answer_p2 = try totalOutputN(12, &reader.interface);
+    try stdout.print("Part 2: {d}\n", .{answer_p2});
     try stdout.flush();
+}
+
+fn totalOutputN(comptime n: u8, reader: *Reader) !u64 {
+    if (n == 0) return 0;
+    if (n == 2) return try totalOutput(reader);
+    var sum: u64 = 0;
+    while (reader.takeDelimiterExclusive('\n')) |line| : (reader.toss(1)) {
+        if (line.len == 0) break;
+        if (n == 1) {
+            sum += std.mem.max(u8, line) - '0';
+            continue;
+        }
+        var buf: [n]u8 = undefined;
+        var begin: usize = 0;
+        var end = line.len - n;
+        for (0..n) |i| {
+            // stop early if we the know search space left matches
+            // the amount of digits expected to fill
+            if (n - i == line.len - begin) {
+                // print("{s}\n", .{line});
+                // print("begin: {d} i: {d} curr: {s} left: {s}\n", .{ begin, i, buf[0..i], line[line.len - begin ..] });
+                std.mem.copyForwards(u8, buf[i..], line[begin..]);
+                break;
+            }
+            // find the highest digit in the possible search space
+            const hi = begin + std.mem.indexOfMax(u8, line[begin .. end + 1]);
+            buf[i] = line[hi];
+            begin, end = .{ hi + 1, end + 1 };
+        }
+        sum += try std.fmt.parseUnsigned(u64, &buf, 10);
+    } else |err| switch (err) {
+        error.EndOfStream => {},
+        else => return err,
+    }
+    return sum;
 }
 
 fn totalOutput(reader: *Reader) !u32 {
@@ -68,5 +107,17 @@ test "part 1" {
 }
 
 test "part 2" {
-    return error.SkipZigTest;
+    var reader: Reader = .fixed(example);
+    const answer = try totalOutputN(12, &reader);
+    try expectEqual(3121910778619, answer);
+
+    // extra tests just for completion :)
+    reader.seek = 0;
+    try expectEqual(0, totalOutputN(0, &reader));
+
+    reader.seek = 0;
+    try expectEqual(9 * 3 + 8, totalOutputN(1, &reader));
+
+    reader.seek = 0;
+    try expectEqual(357, totalOutputN(2, &reader));
 }
