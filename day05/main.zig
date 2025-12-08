@@ -4,8 +4,9 @@ const assert = std.debug.assert;
 const panic = std.debug.panic;
 const testing = std.testing;
 const expectEqual = std.testing.expectEqual;
+const Allocator = std.mem.Allocator;
 const Reader = std.Io.Reader;
-const Writer = std.Io.Writer;
+const example = @embedFile("example.txt");
 
 pub fn main() !void {
     var stdout_buffer: [1024]u8 = undefined;
@@ -18,12 +19,56 @@ pub fn main() !void {
     };
     defer input_file.close();
 
-    try stdout.print("All your {s} are belong to us.\n", .{"codebase"});
+    var gpa: std.heap.GeneralPurposeAllocator(.{ .safety = true }) = .init;
+    defer _ = gpa.deinit();
+    const ally = gpa.allocator();
+
+    var read_buf: [4096]u8 = undefined;
+    var reader = std.fs.File.reader(input_file, &read_buf);
+    const answer_p1 = try countFreshIngredients(ally, &reader.interface);
+    try stdout.print("Part 1: {d}\n", .{answer_p1});
     try stdout.flush();
 }
 
+fn countFreshIngredients(ally: Allocator, reader: *Reader) !usize {
+    const Range = struct { start: u64, end: u64 };
+    var ranges: std.ArrayList(Range) = .empty;
+    defer ranges.deinit(ally);
+
+    var count: usize = 0;
+    while (reader.takeDelimiterExclusive('\n')) |line| : (reader.toss(1)) {
+        if (line.len == 0) break;
+        var it = std.mem.splitScalar(u8, line, '-');
+        const start = try std.fmt.parseUnsigned(u64, it.next().?, 10);
+        const end = try std.fmt.parseUnsigned(u64, it.next().?, 10);
+        try ranges.append(ally, .{ .start = start, .end = end });
+    } else |err| switch (err) {
+        error.EndOfStream => return 0,
+        else => return err,
+    }
+    reader.toss(1);
+
+    while (reader.takeDelimiterExclusive('\n')) |line| : (reader.toss(1)) {
+        if (line.len == 0) break;
+        const ingredient = try std.fmt.parseUnsigned(u64, line, 10);
+        for (ranges.items) |range| {
+            if (ingredient >= range.start and ingredient <= range.end) {
+                count += 1;
+                break;
+            }
+        }
+    } else |err| switch (err) {
+        error.EndOfStream => {},
+        else => return err,
+    }
+
+    return count;
+}
+
 test "part 1" {
-    return error.SkipZigTest;
+    var reader: Reader = .fixed(example);
+    const answer = try countFreshIngredients(testing.allocator, &reader);
+    try expectEqual(3, answer);
 }
 
 test "part 2" {
