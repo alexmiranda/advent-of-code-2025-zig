@@ -27,6 +27,10 @@ pub fn main() !void {
     var reader = std.fs.File.reader(input_file, &read_buf);
     const answer_p1 = try solve(ally, &reader.interface);
     try stdout.print("Part 1: {d}\n", .{answer_p1});
+
+    try reader.seekTo(0);
+    const answer_p2 = try solveProperly(ally, &reader.interface);
+    try stdout.print("Part 2: {d}\n", .{answer_p2});
     try stdout.flush();
 }
 
@@ -87,6 +91,81 @@ fn solve(ally: Allocator, reader: *Reader) !u64 {
     return sum;
 }
 
+fn solveProperly(ally: Allocator, reader: *Reader) !u64 {
+    var grid: std.ArrayList(u8) = .empty;
+    defer grid.deinit(ally);
+
+    // read the first line to figure out how many columns are there
+    var width: usize = 0;
+    if (reader.takeDelimiterExclusive('\n') catch null) |line| {
+        reader.toss(1);
+        try grid.appendSlice(ally, line);
+        width = line.len;
+    }
+
+    // read each line of the math homework, including operators
+    while (reader.take(width)) |line| : (reader.toss(1)) {
+        try grid.appendSlice(ally, line);
+    } else |err| switch (err) {
+        error.EndOfStream => {},
+        else => return err,
+    }
+
+    // ensure that we have the correct amount of rows and columns
+    const rows = @divExact(grid.items.len, width);
+
+    // read all the operands right-to-left
+    var sum: u64 = 0;
+    var operands: std.ArrayList(u64) = .empty;
+    defer operands.deinit(ally);
+    for (1..width + 1) |offset| {
+        const col = width - offset;
+        var value: u64 = 0;
+        var is_separator = true;
+        for (0..rows - 1) |row| {
+            const pos = (row * width) + col;
+            const char = grid.items[pos];
+            // print("{c}", .{char});
+            if (char == ' ') continue;
+            is_separator = false;
+            if (std.mem.indexOfScalar(u8, "0123456789", char) == null) panic("WTF! {c}", .{char});
+            value = (value * 10) + (char - '0');
+        }
+        // print("\n", .{});
+
+        // skip separator columns
+        if (is_separator) {
+            operands.clearRetainingCapacity();
+            continue;
+        }
+
+        try operands.append(ally, value);
+
+        // check if there's an operator in the last row
+        switch (grid.items[(rows - 1) * width + col]) {
+            ' ' => {}, // it's just a space
+            '+' => {
+                // print("+\n", .{});
+                var result: u64 = 0;
+                while (operands.pop()) |val| {
+                    result += val;
+                }
+                sum += result;
+            },
+            '*' => {
+                // print("*\n", .{});
+                var result: u64 = 1;
+                while (operands.pop()) |val| {
+                    result *= val;
+                }
+                sum += result;
+            },
+            else => unreachable,
+        }
+    }
+    return sum;
+}
+
 test "part 1" {
     var reader: Reader = .fixed(example);
     const answer = try solve(testing.allocator, &reader);
@@ -94,5 +173,7 @@ test "part 1" {
 }
 
 test "part 2" {
-    return error.SkipZigTest;
+    var reader: Reader = .fixed(example);
+    const answer = try solveProperly(testing.allocator, &reader);
+    try expectEqual(3263827, answer);
 }
