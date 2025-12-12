@@ -43,6 +43,9 @@ pub fn main() !void {
 
     const answer_p1 = try connect(ally, boxes, 1000);
     try stdout.print("Part 1: {d}\n", .{answer_p1});
+
+    const answer_p2 = try connectAll(ally, boxes);
+    try stdout.print("Part 2: {d}\n", .{answer_p2});
     try stdout.flush();
 }
 
@@ -127,8 +130,60 @@ fn connect(ally: Allocator, boxes: []Box, n: usize) !u32 {
     return @reduce(.Mul, largest);
 }
 
-fn sameCircuit(circuits: []u16, a: u16, b: u16) bool {
-    return findCircuitOf(circuits, a) == findCircuitOf(circuits, b);
+fn connectAll(ally: Allocator, boxes: []Box) !u32 {
+    var heap: std.PriorityQueue(Pair, []Box, compare) = .init(ally, boxes);
+    defer heap.deinit();
+
+    // sort all the box pairs by distance
+    try heap.ensureTotalCapacity(boxes.len * (boxes.len - 1) / 2);
+    for (0..boxes.len - 1) |i| {
+        for (i + 1..boxes.len) |j| {
+            try heap.add(.{ @intCast(i), @intCast(j) });
+        }
+    }
+
+    // we start with every junction box being its own circuit
+    const circuits = try initCircuits(ally, boxes.len);
+    defer ally.free(circuits);
+
+    // sizes will be used to keep track of the sizes of each circuit
+    const sizes = blk: {
+        var ones = try ally.alloc(u16, boxes.len);
+        for (0..boxes.len) |i| ones[i] = 1;
+        break :blk ones;
+    };
+    defer ally.free(sizes);
+
+    // we pop off the first pair and make the first circuit
+    var last_pair = if (heap.removeOrNull()) |first_pair| blk: {
+        const a, const b = first_pair;
+        circuits[b] = a;
+        sizes[a] = 2;
+        // print("{f} connects with {f}\n", .{ boxes[a], boxes[b] });
+        break :blk first_pair;
+    } else unreachable;
+
+    // now we do this a few more times until we have reached the n amount of connections
+    while (heap.removeOrNull()) |pair| {
+        const a, const b = pair;
+        const root_of_a = findCircuitOf(circuits, a);
+        const root_of_b = findCircuitOf(circuits, b);
+        if (root_of_a != root_of_b) {
+            last_pair = pair;
+            // print("{f} connects with {f}\n", .{ boxes[a], boxes[b] });
+            if (sizes[root_of_a] >= sizes[root_of_b]) {
+                circuits[root_of_b] = root_of_a;
+                sizes[root_of_a] += sizes[root_of_b];
+            } else {
+                circuits[root_of_a] = root_of_b;
+                sizes[root_of_b] += sizes[root_of_a];
+            }
+        }
+    }
+
+    const a: u32 = @intFromFloat(boxes[last_pair.@"0"].x);
+    const b: u32 = @intFromFloat(boxes[last_pair.@"1"].x);
+    return a * b;
 }
 
 fn findCircuitOf(circuits: []u16, box: u16) u16 {
@@ -184,5 +239,9 @@ test "part 1" {
 }
 
 test "part 2" {
-    return error.SkipZigTest;
+    var reader: Reader = .fixed(example);
+    const boxes = try parseInput(testing.allocator, &reader);
+    defer testing.allocator.free(boxes);
+    const answer = try connectAll(testing.allocator, boxes);
+    try expectEqual(25272, answer);
 }
