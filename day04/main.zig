@@ -4,6 +4,7 @@ const assert = std.debug.assert;
 const panic = std.debug.panic;
 const testing = std.testing;
 const expectEqual = std.testing.expectEqual;
+const Allocator = std.mem.Allocator;
 const Reader = std.Io.Reader;
 const Writer = std.Io.Writer;
 const example = @embedFile("example.txt");
@@ -25,6 +26,13 @@ pub fn main() !void {
     var reader = std.fs.File.reader(input_file, &read_buf);
     const answer_p1 = try forklift(135, &reader.interface);
     try stdout.print("Part 1: {d}\n", .{answer_p1});
+
+    var gpa: std.heap.GeneralPurposeAllocator(.{ .safety = true }) = .init;
+    defer _ = gpa.deinit();
+
+    try reader.seekTo(0);
+    const answer_p2 = try removeAccessibleRolls(gpa.allocator(), &reader.interface);
+    try stdout.print("Part 2: {d}\n", .{answer_p2});
 
     try stdout.flush();
 }
@@ -229,6 +237,65 @@ fn forklift(comptime max_width: u16, reader: *Reader) !usize {
     return counter;
 }
 
+/// Removes all rolls that have fewer than four occupied adjacent positions.
+/// Rolls selected in a pass are removed together before the next pass begins.
+fn removeAccessibleRolls(allocator: Allocator, reader: *Reader) !usize {
+    const first_row = reader.takeDelimiterExclusive('\n') catch return 0;
+    reader.toss(1);
+    const width = first_row.len;
+
+    var grid: std.ArrayList(u8) = try .initCapacity(allocator, width * width);
+    defer grid.deinit(allocator);
+    grid.appendSliceAssumeCapacity(first_row);
+
+    while (reader.take(width)) |row| : (reader.toss(1)) {
+        grid.appendSliceAssumeCapacity(row);
+    } else |err| switch (err) {
+        error.EndOfStream => {},
+        else => return err,
+    }
+
+    const height = @divExact(grid.items.len, width);
+    var removable: std.ArrayList(usize) = .empty;
+    defer removable.deinit(allocator);
+
+    var removed: usize = 0;
+    while (true) {
+        removable.clearRetainingCapacity();
+
+        for (0..height) |row| {
+            for (0..width) |col| {
+                const pos = row * width + col;
+                if (grid.items[pos] != '@') continue;
+
+                var occupied_neighbours: u4 = 0;
+                const row_start = if (row == 0) 0 else row - 1;
+                const row_end = @min(row + 2, height);
+                const col_start = if (col == 0) 0 else col - 1;
+                const col_end = @min(col + 2, width);
+                for (row_start..row_end) |neighbour_row| {
+                    for (col_start..col_end) |neighbour_col| {
+                        if (neighbour_row == row and neighbour_col == col) continue;
+                        if (grid.items[neighbour_row * width + neighbour_col] == '@') {
+                            occupied_neighbours += 1;
+                        }
+                    }
+                }
+
+                if (occupied_neighbours < max_occupied_positions) {
+                    try removable.append(allocator, pos);
+                }
+            }
+        }
+
+        if (removable.items.len == 0) break;
+        for (removable.items) |pos| grid.items[pos] = '.';
+        removed += removable.items.len;
+    }
+
+    return removed;
+}
+
 fn isAccessible(buf: []const u8, pos: usize, adjacents: []const isize, comptime len: usize) bool {
     if (len > 8) @compileError("way too many adjacent tiles");
     const vec_a: @Vector(8, usize) = @splat(pos);
@@ -292,5 +359,7 @@ test "part 1" {
 }
 
 test "part 2" {
-    return error.SkipZigTest;
+    var reader: Reader = .fixed(example);
+    const answer = try removeAccessibleRolls(testing.allocator, &reader);
+    try expectEqual(43, answer);
 }
